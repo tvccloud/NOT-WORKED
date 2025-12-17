@@ -1,9 +1,8 @@
 import os
 import random
 import time
-from pytrends.request import TrendReq
 import tweepy
-from transformers import pipeline
+import feedparser
 
 # Twitter auth
 client = tweepy.Client(
@@ -13,42 +12,48 @@ client = tweepy.Client(
     access_token_secret=os.getenv("TWITTER_ACCESS_SECRET")
 )
 
-# AI classifier
-classifier = pipeline(
-    "zero-shot-classification",
-    model="facebook/bart-large-mnli",
-    token=os.getenv("HF_TOKEN")
-)
-
-# Blacklist
+# Strict blacklist
 BLOCKED = [
-    "politics","election","government","minister",
-    "religion","god","hindu","islam","christian","temple","mosque"
+    "politics", "election", "government", "minister",
+    "bjp", "congress", "parliament", "president",
+    "religion", "god", "hindu", "islam", "christian",
+    "temple", "mosque", "church"
 ]
 
-def is_safe(topic):
-    if any(word in topic.lower() for word in BLOCKED):
-        return False
-    result = classifier(topic, ["Politics","Religion","Technology","Business","Entertainment","Lifestyle"])
-    for label, score in zip(result["labels"], result["scores"]):
-        if label in ["Politics","Religion"] and score > 0.2:
-            return False
-    return True
+def is_safe(text):
+    text = text.lower()
+    return not any(word in text for word in BLOCKED)
 
-def get_trends():
-    pytrends = TrendReq()
-    trends = pytrends.trending_searches(pn="india")
-    return trends[0].tolist()
+def get_trending_topics():
+    feed = feedparser.parse(
+        "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en"
+    )
+
+    topics = []
+    for entry in feed.entries:
+        title = entry.title
+        if is_safe(title):
+            topics.append(title)
+
+    return topics[:5]
 
 def generate_tweet(topic):
-    return f"{topic} is gaining traction today. Worth keeping an eye on."
+    templates = [
+        f"{topic}. This is picking up momentum.",
+        f"A lot of people are talking about this: {topic}",
+        f"This topic is trending right now: {topic}",
+        f"Seeing increased buzz around {topic}.",
+        f"{topic} is gaining attention today."
+    ]
+    return random.choice(templates)
 
 def main():
-    topics = get_trends()
-    safe_topics = [t for t in topics if is_safe(t)]
-    selected = safe_topics[:5]
+    topics = get_trending_topics()
 
-    for topic in selected:
+    if not topics:
+        return
+
+    for topic in topics:
         tweet = generate_tweet(topic)
         client.create_tweet(text=tweet)
         time.sleep(random.randint(3600, 7200))
