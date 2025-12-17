@@ -1,0 +1,5 @@
+tweepy
+pytrends
+requests
+transformers
+torch
